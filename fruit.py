@@ -31,13 +31,12 @@ def checkBox(x, y, table):
     else:
         return True
 
-def fruitSpawn(table):
-    random_x = random.randint(1,21)
-    random_y = random.randint(1,21)
-    if(checkBox(random_x, random_y)):
+def fruit_spawn(table):
+    empty_spots = [(x, y) for x in range(1, 22) for y in range(1, 22) if checkBox(x, y, table)]
+    if empty_spots:
+        random_x, random_y = random.choice(empty_spots)
         table[random_x][random_y] = "$"
-        point = (random_x,random_y)
-        return point
+        return (random_x, random_y)
     else:
-        return fruitSpawn()
+        raise Exception("No available spots for fruit")
 

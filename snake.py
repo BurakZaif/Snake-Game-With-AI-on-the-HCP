@@ -4,46 +4,32 @@ import random
 
 Init_tup = (1, 3)
 queue = []
+flag = False
+y_count = 0
+
 
 def snakeInit():
     for i in range(1,4):
         queue.append((1,i))
 
 
-def snakeMove(fruitLocation):
-    global Init_tup, interrupt
-    while (True):
-        if(flag == True):
-            return
-        minimove(fruitLocation, (Init_tup[0],Init_tup[1]))
+def snakeMove(fruitLocation, arr):
+    global Init_tup
+    while (flag == False):
+        myqueue = minimove(fruitLocation, (Init_tup[0],Init_tup[1]), arr)
         time.sleep(0.21)
+        if myqueue == -1:
+            return 0
+        else:
+            return myqueue
 
 
-def checkBoxMove(x, y, dir):
-    global values, x_count, y_count
-    mylocal = y
-    initmove = random.choice(values)
-    if arr[x][y] == "#" and dir == "y":
-        mylocal = initmove + y
-        return checkBoxMove(x,mylocal, "x")
-    else:
-        if  initmove == 1 and y_count < 0:
-            y_count = y_count -1
-        elif initmove == 1 and y_count > 0:
-            y_count = y_count + 1
-        elif initmove == -1 and y_count > 0:
-            y_count = y_count + 1
-        else :
-            y_count = y_count - 1
-        y = mylocal
-        return (x,y)
-
-def mynew(new_x):
+def mynew(new_x, arr):
     global Init_tup, y_count
-    local = random.choice(values)
+    local = random.choice([-1, 1])  # Randomly choose between -1 and 1
     Init_tup = (new_x, Init_tup[1] + local)
     if arr[Init_tup[0]][Init_tup[1]] == "#":
-        mynew(new_x)
+        mynew(new_x,arr)
     else:
         if local == 1 and y_count < 0:
             y_count = y_count - 1
@@ -63,8 +49,14 @@ def printQueue(queue):
 def manhattan_single(p1,p2):
     return p1-p2
 
+def checkBoundary(tuple, arr):
+    if tuple is None or arr[tuple[0]][tuple[1]] in ["|", "~", "#"]:
+        print("!!GAME OVER!!")
+        printPlane()
+        return False
+    return True
 
-def minimove(fruitPoint,head):
+def minimove(fruitPoint,head, arr):
     global Init_tup, flag, x_count, y_count
     x_count = manhattan_single(fruitPoint[0], head[0])
     y_count = manhattan_single(fruitPoint[1], head[1])
@@ -112,8 +104,11 @@ def minimove(fruitPoint,head):
         time.sleep(0.1)
         j -= 1
     queue.insert(0, next_body)
+    return queue
 
 def game():
     snakeInit()
     printPlane()
+
+
 
