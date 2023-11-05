@@ -1,199 +1,92 @@
-import time
-import keyboard
-import threading
-import random
-from rich import print as rprint
-from rich.console import Console
-import os
-import heapq
+from mpi4py import MPI
+import board
+import fruit
+import snake
+import logging
 
-console = Console(force_terminal=True)
+logger = logging.getlogger(__name__)
+logger.setlevel(logging.DEBUG)
 
-rows, cols = 22, 22
-arr = [[" " for i in range(cols)] for j in range(rows)]
-queue = []
-first = True
-Init_tup = (1, 3)
-flag = False
-values = [-1,1]
-x_count = 0
-y_count = 0
+formatter = logging.Formatter('%(asctime)s:%(name)s:%(levelname)s:%(message)s')
+file_handler = logging.FileHandler("main.log")
+file_handler.setLevel(logging.ERROR)
+file_handler.setFormatter(formatter)
 
-for i in range(1, 21):
-    arr[0][i] = "~"
-    arr[21][i] = "~"
-for j in range(1, 21):
-    arr[j][0] = "|"
-    arr[j][21] = "|"
-
-arr[0][0] = "+"
-arr[0][11] = "+"
-arr[21][0] = "+"
-arr[21][21] = "+"
-
-def clear_terminal():
-    os.system('cls' if os.name == 'nt' else 'clear')
-
-def printPlane():
-    output = ""
-
-    for row in arr:
-        for element in row:
-            if element == "#":
-                output += "\033[32m" + str(element) + " "  # Green color
-            elif element in ['+', '|', '~']:
-                output += "\033[31m" + str(element) + " "  # Red color
-            else:
-                output += str(element) + " "
-        output += "\033[0m\n"  # Reset color and move to the next line
-
-    clear_terminal()  # Clear the terminal
-    print("\033[H" + output)  # Move cursor to the top and print the entire output
-    print("SCORE:", len(queue))
+logger.addHandler(file_handler)
 
 
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+table = board.arr
+snake_start = snake.queue
 
-def snakeInit():
-    for i in range(1,4):
-        queue.append((1,i))
-        arr[1][i] = "#"
+logger.debug("table is {}, and snake_start is {}".format(table, snake_start))
 
+score = 3;
 
-def checkBoundary(tuple):
-    if tuple == None or arr[tuple[0]][tuple[1]] == "|" or arr[tuple[0]][tuple[1]] == "~" or arr[tuple[0]][tuple[1]] == "#" :
-        print("!!GAME OVER!!")
-        printPlane()
-        return False
-    return True
+logger.info(("Main script is ready to start"))
 
-def checkBox(x, y):
-    if(arr[x][y] != " "):
-        return False
+#Rank 0 is Table
+if rank == 0:
+    Ready = input("Ready to play? (Yes/No): ")
+    logger.debug("Ready answer is : {}".format(Ready))
+
+    if Ready.lower() == "yes":
+        snake.game()
+
+        snake1 = comm.recv(source = 2, tag = 3)
+        logger.debug("snake1 is : {}".format(snake1))
+
+        for i in range(1,len(snake1)):
+            table[1][i] = "#"
+        while(True):
+            comm.send(table, dest = 1, tag=0)   #Send the game board to Rank 1
+            bot = comm.recv(source=1, tag=1)    #Receive fruit position
+            logger.debug("bot is : {} ".format(bot))
+
+            table[bot[0]][bot[1]] = "$"         #Spawning the fruit
+            comm.send(bot, dest = 2, tag = 4)   #Sending the fruit position to Rank 2
+            comm.send(table, dest = 2, tag=2)   #Sending the updated game board to the Rank 2
+            snake_mid = comm.recv(source = 2, tag = 5)  #Receiving the snake's next move
+            logger.debug("snake_mid value is : {} ".format(snake_mid))
+
+            if(snake_mid == 0):
+                break
+            for i in range(1, len(snake_mid)):
+                table[1][i] = "#"
+        print("Game Over. Score:", score)
+        logger.debug("Game Over. Score: {}".format(score))
+
     else:
-        return True
+        print("Game aborted.")
+        logger.debug("Game aborted")
 
-def checkBoxMove(x, y, dir):
-    global values, x_count, y_count
-    mylocal = y
-    initmove = random.choice(values)
-    if arr[x][y] == "#" and dir == "y":
-        mylocal = initmove + y
-        return checkBoxMove(x,mylocal, "x")
-    else:
-        if  initmove == 1 and y_count < 0:
-            y_count = y_count -1
-        elif initmove == 1 and y_count > 0:
-            y_count = y_count + 1
-        elif initmove == -1 and y_count > 0:
-            y_count = y_count + 1
-        else :
-            y_count = y_count - 1
-        y = mylocal
-        return (x,y)
+#Rank 1 is fruitspawner
+elif rank == 1:
+    botTable = comm.recv(source = 0, tag = 0)
+    logger.debug("botTable is : {}".format(botTable))
 
-def mynew(new_x):
-    global Init_tup, y_count
-    local = random.choice(values)
-    Init_tup = (new_x, Init_tup[1] + local)
-    if arr[Init_tup[0]][Init_tup[1]] == "#":
-        mynew(new_x)
-    else:
-        if local == 1 and y_count < 0:
-            y_count = y_count - 1
-        elif local == 1 and y_count > 0:
-            y_count = y_count + 1
-        elif local == -1 and y_count > 0:
-            y_count = y_count + 1
-        else:
-            y_count = y_count - 1
+    fruitPos = fruit.fruitSpawn(botTable)
+    logger.debug("fruitPos is : {}").format(fruitPos)
 
-def fruitSpawn():
-    random_x = random.randint(1,21)
-    random_y = random.randint(1,21)
-    if(checkBox(random_x, random_y)):
-        arr[random_x][random_y] = "$"
-        point = (random_x,random_y)
-        return point
-    else:
-        return fruitSpawn()
+    comm.send(fruitPos, source = 1, tag = 1)
+    print("Fruit is just appeared")
+    logger.info("Fruit is just appeared")
 
-def printQueue(queue):
-    temp_queue = list(queue)
-    for item in temp_queue:
-        print(item)
+#Rank 2 is snake
+elif rank == 2:
+    comm.send(snake_start, source = 2, tag = 3)
+    fruit_snake = comm.recv(source = 0, tag = 4)
+    logger.debug("furit_snake is: {}".format(fruit_snake))
+
+    moveTable = comm.recv(source = 0, tag = 2)
+    logger.debug("moveTable is: {}".format(moveTable))
+
+    snake_last = snake.snakeMove(fruit_snake, moveTable)
+    logger.debug("snake_last is: {}".format(snake_last))
+
+    comm.send(snake_last, dest = 0, tag = 5)
 
 
-def manhattan_single(p1,p2):
-    return p1-p2
-
-
-def minimove(fruitPoint,head):
-    global Init_tup, flag, x_count, y_count
-    x_count = manhattan_single(fruitPoint[0], head[0])
-    y_count = manhattan_single(fruitPoint[1], head[1])
-    i = abs(x_count)
-    j = abs(y_count)
-    while (i != 0):
-        next_body = queue.pop(0)
-        x = next_body[0]
-        y = next_body[1]
-        if (x_count < 0):
-            new_x = Init_tup[0] - 1
-        else:
-            new_x = Init_tup[0] + 1
-
-        Init_tup = (new_x, Init_tup[1])
-        if arr[Init_tup[0]][Init_tup[1]] == "#":
-            Init_tup = mynew(new_x)
-
-        if checkBoundary(Init_tup) == False:
-            flag = True
-            return
-        arr[x][y] = " "
-        queue.append(Init_tup)
-        arr[Init_tup[0]][Init_tup[1]] = "#"
-        printPlane()
-        time.sleep(0.1)
-        i -= 1
-    while (j != 0):
-        next_body = queue.pop(0)
-        x = next_body[0]
-        y = next_body[1]
-        if (y_count < 0):
-            new_y = Init_tup[1] - 1
-        else:
-            new_y = Init_tup[1] + 1
-
-        Init_tup = (Init_tup[0], new_y)
-        if checkBoundary(Init_tup) == False:
-            flag = True
-            return
-        arr[x][y] = " "
-        queue.append(Init_tup)
-        arr[Init_tup[0]][Init_tup[1]] = "#"
-        printPlane()
-        time.sleep(0.1)
-        j -= 1
-    queue.insert(0, next_body)
-
-
-
-
-def snakeMove():
-    global Init_tup, interrupt
-    while (True):
-        if (first):
-            if(flag == True):
-                return
-            minimove(fruitSpawn(), (Init_tup[0],Init_tup[1]))
-            #printQueue(queue)
-            time.sleep(0.21)
-
-
-
-def game():
-    snakeInit()
-    printPlane()
-    snakeMove()
-
-game()
+logger.info("Mpi finalized")
+MPI.Finalize()
